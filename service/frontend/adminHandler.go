@@ -202,7 +202,7 @@ func (adh *adminHandlerImpl) AddSearchAttribute(
 	request *types.AddSearchAttributeRequest,
 ) (retError error) {
 
-	defer log.CapturePanic(adh.GetLogger(), &retError)
+	defer func() { log.CapturePanic(recover(), adh.GetLogger(), &retError) }()
 	scope, sw := adh.startRequestProfile(ctx, metrics.AdminAddSearchAttributeScope)
 	defer sw.Stop()
 
@@ -274,7 +274,7 @@ func (adh *adminHandlerImpl) DescribeWorkflowExecution(
 	request *types.AdminDescribeWorkflowExecutionRequest,
 ) (resp *types.AdminDescribeWorkflowExecutionResponse, retError error) {
 
-	defer log.CapturePanic(adh.GetLogger(), &retError)
+	defer func() { log.CapturePanic(recover(), adh.GetLogger(), &retError) }()
 	scope, sw := adh.startRequestProfile(ctx, metrics.AdminDescribeWorkflowExecutionScope)
 	defer sw.Stop()
 
@@ -322,7 +322,7 @@ func (adh *adminHandlerImpl) RemoveTask(
 	request *types.RemoveTaskRequest,
 ) (retError error) {
 
-	defer log.CapturePanic(adh.GetLogger(), &retError)
+	defer func() { log.CapturePanic(recover(), adh.GetLogger(), &retError) }()
 	scope, sw := adh.startRequestProfile(ctx, metrics.AdminRemoveTaskScope)
 	defer sw.Stop()
 
@@ -445,10 +445,15 @@ func (adh *adminHandlerImpl) deleteWorkflowFromHistory(
 			logger.Error("Cannot decode thrift object", tag.Error(err))
 			continue
 		}
+		domainName, err := adh.GetDomainCache().GetDomainName(mutableState.ExecutionInfo.DomainID)
+		if err != nil {
+			return false
+		}
 		logger.Info(fmt.Sprintf("Deleting history events for %#v", branchInfo))
 		err = historyManager.DeleteHistoryBranch(ctx, &persistence.DeleteHistoryBranchRequest{
 			BranchToken: branchToken,
 			ShardID:     &shardIDInt,
+			DomainName:  domainName,
 		})
 		if err != nil {
 			logger.Error("Failed to delete history", tag.Error(err))
@@ -474,11 +479,15 @@ func (adh *adminHandlerImpl) deleteWorkflowFromExecutions(
 		logger.Error(fmt.Sprintf("Cannot get execution manager for shardID(%v): %#v", shardIDInt, err))
 		return false
 	}
-
+	domainName, err := adh.GetDomainCache().GetDomainName(domainID)
+	if err != nil {
+		return false
+	}
 	req := &persistence.DeleteWorkflowExecutionRequest{
 		DomainID:   domainID,
 		WorkflowID: workflowID,
 		RunID:      runID,
+		DomainName: domainName,
 	}
 
 	deletedFromExecutions := false
@@ -493,6 +502,7 @@ func (adh *adminHandlerImpl) deleteWorkflowFromExecutions(
 		DomainID:   domainID,
 		WorkflowID: workflowID,
 		RunID:      runID,
+		DomainName: domainName,
 	}
 
 	err = exeStore.DeleteCurrentWorkflowExecution(ctx, deleteCurrentReq)
@@ -621,7 +631,7 @@ func (adh *adminHandlerImpl) CloseShard(
 	request *types.CloseShardRequest,
 ) (retError error) {
 
-	defer log.CapturePanic(adh.GetLogger(), &retError)
+	defer func() { log.CapturePanic(recover(), adh.GetLogger(), &retError) }()
 	scope, sw := adh.startRequestProfile(ctx, metrics.AdminCloseShardScope)
 	defer sw.Stop()
 
@@ -640,7 +650,7 @@ func (adh *adminHandlerImpl) ResetQueue(
 	request *types.ResetQueueRequest,
 ) (retError error) {
 
-	defer log.CapturePanic(adh.GetLogger(), &retError)
+	defer func() { log.CapturePanic(recover(), adh.GetLogger(), &retError) }()
 	scope, sw := adh.startRequestProfile(ctx, metrics.AdminResetQueueScope)
 	defer sw.Stop()
 
@@ -663,7 +673,7 @@ func (adh *adminHandlerImpl) DescribeQueue(
 	request *types.DescribeQueueRequest,
 ) (resp *types.DescribeQueueResponse, retError error) {
 
-	defer log.CapturePanic(adh.GetLogger(), &retError)
+	defer func() { log.CapturePanic(recover(), adh.GetLogger(), &retError) }()
 	scope, sw := adh.startRequestProfile(ctx, metrics.AdminDescribeQueueScope)
 	defer sw.Stop()
 
@@ -683,7 +693,7 @@ func (adh *adminHandlerImpl) DescribeShardDistribution(
 	request *types.DescribeShardDistributionRequest,
 ) (resp *types.DescribeShardDistributionResponse, retError error) {
 
-	defer log.CapturePanic(adh.GetLogger(), &retError)
+	defer func() { log.CapturePanic(recover(), adh.GetLogger(), &retError) }()
 	_, sw := adh.startRequestProfile(ctx, metrics.AdminDescribeShardDistributionScope)
 	defer sw.Stop()
 
@@ -712,7 +722,7 @@ func (adh *adminHandlerImpl) DescribeHistoryHost(
 	request *types.DescribeHistoryHostRequest,
 ) (resp *types.DescribeHistoryHostResponse, retError error) {
 
-	defer log.CapturePanic(adh.GetLogger(), &retError)
+	defer func() { log.CapturePanic(recover(), adh.GetLogger(), &retError) }()
 	scope, sw := adh.startRequestProfile(ctx, metrics.AdminDescribeHistoryHostScope)
 	defer sw.Stop()
 
@@ -735,7 +745,7 @@ func (adh *adminHandlerImpl) GetWorkflowExecutionRawHistoryV2(
 	request *types.GetWorkflowExecutionRawHistoryV2Request,
 ) (resp *types.GetWorkflowExecutionRawHistoryV2Response, retError error) {
 
-	defer log.CapturePanic(adh.GetLogger(), &retError)
+	defer func() { log.CapturePanic(recover(), adh.GetLogger(), &retError) }()
 	scope, sw := adh.startRequestProfile(ctx, metrics.AdminGetWorkflowExecutionRawHistoryV2Scope)
 	defer sw.Stop()
 
@@ -821,6 +831,7 @@ func (adh *adminHandlerImpl) GetWorkflowExecutionRawHistoryV2(
 		PageSize:      pageSize,
 		NextPageToken: pageToken.PersistenceToken,
 		ShardID:       common.IntPtr(shardID),
+		DomainName:    request.GetDomain(),
 	})
 	if err != nil {
 		if _, ok := err.(*types.EntityNotExistsError); ok {
@@ -866,7 +877,7 @@ func (adh *adminHandlerImpl) DescribeCluster(
 	ctx context.Context,
 ) (resp *types.DescribeClusterResponse, retError error) {
 
-	defer log.CapturePanic(adh.GetLogger(), &retError)
+	defer func() { log.CapturePanic(recover(), adh.GetLogger(), &retError) }()
 	scope, sw := adh.startRequestProfile(ctx, metrics.AdminGetWorkflowExecutionRawHistoryV2Scope)
 	defer sw.Stop()
 
@@ -939,7 +950,7 @@ func (adh *adminHandlerImpl) GetReplicationMessages(
 	request *types.GetReplicationMessagesRequest,
 ) (resp *types.GetReplicationMessagesResponse, err error) {
 
-	defer log.CapturePanic(adh.GetLogger(), &err)
+	defer func() { log.CapturePanic(recover(), adh.GetLogger(), &err) }()
 	scope, sw := adh.startRequestProfile(ctx, metrics.AdminGetReplicationMessagesScope)
 	defer sw.Stop()
 
@@ -963,7 +974,7 @@ func (adh *adminHandlerImpl) GetDomainReplicationMessages(
 	request *types.GetDomainReplicationMessagesRequest,
 ) (resp *types.GetDomainReplicationMessagesResponse, err error) {
 
-	defer log.CapturePanic(adh.GetLogger(), &err)
+	defer func() { log.CapturePanic(recover(), adh.GetLogger(), &err) }()
 	scope, sw := adh.startRequestProfile(ctx, metrics.AdminGetDomainReplicationMessagesScope)
 	defer sw.Stop()
 
@@ -1022,7 +1033,7 @@ func (adh *adminHandlerImpl) GetDLQReplicationMessages(
 	request *types.GetDLQReplicationMessagesRequest,
 ) (resp *types.GetDLQReplicationMessagesResponse, err error) {
 
-	defer log.CapturePanic(adh.GetLogger(), &err)
+	defer func() { log.CapturePanic(recover(), adh.GetLogger(), &err) }()
 	scope, sw := adh.startRequestProfile(ctx, metrics.AdminGetDLQReplicationMessagesScope)
 	defer sw.Stop()
 
@@ -1046,7 +1057,7 @@ func (adh *adminHandlerImpl) ReapplyEvents(
 	request *types.ReapplyEventsRequest,
 ) (err error) {
 
-	defer log.CapturePanic(adh.GetLogger(), &err)
+	defer func() { log.CapturePanic(recover(), adh.GetLogger(), &err) }()
 	scope, sw := adh.startRequestProfile(ctx, metrics.AdminReapplyEventsScope)
 	defer sw.Stop()
 
@@ -1086,7 +1097,7 @@ func (adh *adminHandlerImpl) ReadDLQMessages(
 	request *types.ReadDLQMessagesRequest,
 ) (resp *types.ReadDLQMessagesResponse, err error) {
 
-	defer log.CapturePanic(adh.GetLogger(), &err)
+	defer func() { log.CapturePanic(recover(), adh.GetLogger(), &err) }()
 	scope, sw := adh.startRequestProfile(ctx, metrics.AdminReadDLQMessagesScope)
 	defer sw.Stop()
 
@@ -1147,7 +1158,7 @@ func (adh *adminHandlerImpl) PurgeDLQMessages(
 	request *types.PurgeDLQMessagesRequest,
 ) (err error) {
 
-	defer log.CapturePanic(adh.GetLogger(), &err)
+	defer func() { log.CapturePanic(recover(), adh.GetLogger(), &err) }()
 	scope, sw := adh.startRequestProfile(ctx, metrics.AdminPurgeDLQMessagesScope)
 	defer sw.Stop()
 
@@ -1194,7 +1205,7 @@ func (adh *adminHandlerImpl) CountDLQMessages(
 	ctx context.Context,
 	request *types.CountDLQMessagesRequest,
 ) (resp *types.CountDLQMessagesResponse, err error) {
-	defer log.CapturePanic(adh.GetLogger(), &err)
+	defer func() { log.CapturePanic(recover(), adh.GetLogger(), &err) }()
 
 	scope, sw := adh.startRequestProfile(ctx, metrics.AdminCountDLQMessagesScope)
 	defer sw.Stop()
@@ -1221,7 +1232,7 @@ func (adh *adminHandlerImpl) MergeDLQMessages(
 	request *types.MergeDLQMessagesRequest,
 ) (resp *types.MergeDLQMessagesResponse, err error) {
 
-	defer log.CapturePanic(adh.GetLogger(), &err)
+	defer func() { log.CapturePanic(recover(), adh.GetLogger(), &err) }()
 	scope, sw := adh.startRequestProfile(ctx, metrics.AdminMergeDLQMessagesScope)
 	defer sw.Stop()
 
@@ -1277,7 +1288,7 @@ func (adh *adminHandlerImpl) RefreshWorkflowTasks(
 	ctx context.Context,
 	request *types.RefreshWorkflowTasksRequest,
 ) (err error) {
-	defer log.CapturePanic(adh.GetLogger(), &err)
+	defer func() { log.CapturePanic(recover(), adh.GetLogger(), &err) }()
 	scope, sw := adh.startRequestProfile(ctx, metrics.AdminRefreshWorkflowTasksScope)
 	defer sw.Stop()
 
@@ -1307,7 +1318,7 @@ func (adh *adminHandlerImpl) ResendReplicationTasks(
 	ctx context.Context,
 	request *types.ResendReplicationTasksRequest,
 ) (err error) {
-	defer log.CapturePanic(adh.GetLogger(), &err)
+	defer func() { log.CapturePanic(recover(), adh.GetLogger(), &err) }()
 	scope, sw := adh.startRequestProfile(ctx, metrics.AdminResendReplicationTasksScope)
 	defer sw.Stop()
 
@@ -1340,7 +1351,7 @@ func (adh *adminHandlerImpl) GetCrossClusterTasks(
 	request *types.GetCrossClusterTasksRequest,
 ) (resp *types.GetCrossClusterTasksResponse, err error) {
 
-	defer log.CapturePanic(adh.GetLogger(), &err)
+	defer func() { log.CapturePanic(recover(), adh.GetLogger(), &err) }()
 	scope, sw := adh.startRequestProfile(ctx, metrics.AdminGetCrossClusterTasksScope)
 	defer sw.Stop()
 
@@ -1363,7 +1374,7 @@ func (adh *adminHandlerImpl) RespondCrossClusterTasksCompleted(
 	request *types.RespondCrossClusterTasksCompletedRequest,
 ) (resp *types.RespondCrossClusterTasksCompletedResponse, err error) {
 
-	defer log.CapturePanic(adh.GetLogger(), &err)
+	defer func() { log.CapturePanic(recover(), adh.GetLogger(), &err) }()
 	scope, sw := adh.startRequestProfile(ctx, metrics.AdminRespondCrossClusterTasksCompletedScope)
 	defer sw.Stop()
 
@@ -1592,7 +1603,7 @@ func deserializeRawHistoryToken(bytes []byte) (*getWorkflowRawHistoryV2Token, er
 }
 
 func (adh *adminHandlerImpl) GetDynamicConfig(ctx context.Context, request *types.GetDynamicConfigRequest) (_ *types.GetDynamicConfigResponse, retError error) {
-	defer log.CapturePanic(adh.GetLogger(), &retError)
+	defer func() { log.CapturePanic(recover(), adh.GetLogger(), &retError) }()
 	scope, sw := adh.startRequestProfile(ctx, metrics.AdminGetDynamicConfigScope)
 	defer sw.Stop()
 
@@ -1636,7 +1647,7 @@ func (adh *adminHandlerImpl) GetDynamicConfig(ctx context.Context, request *type
 }
 
 func (adh *adminHandlerImpl) UpdateDynamicConfig(ctx context.Context, request *types.UpdateDynamicConfigRequest) (retError error) {
-	defer log.CapturePanic(adh.GetLogger(), &retError)
+	defer func() { log.CapturePanic(recover(), adh.GetLogger(), &retError) }()
 	scope, sw := adh.startRequestProfile(ctx, metrics.AdminUpdateDynamicConfigScope)
 	defer sw.Stop()
 
@@ -1653,7 +1664,7 @@ func (adh *adminHandlerImpl) UpdateDynamicConfig(ctx context.Context, request *t
 }
 
 func (adh *adminHandlerImpl) RestoreDynamicConfig(ctx context.Context, request *types.RestoreDynamicConfigRequest) (retError error) {
-	defer log.CapturePanic(adh.GetLogger(), &retError)
+	defer func() { log.CapturePanic(recover(), adh.GetLogger(), &retError) }()
 	scope, sw := adh.startRequestProfile(ctx, metrics.AdminRestoreDynamicConfigScope)
 	defer sw.Stop()
 
@@ -1680,7 +1691,7 @@ func (adh *adminHandlerImpl) RestoreDynamicConfig(ctx context.Context, request *
 }
 
 func (adh *adminHandlerImpl) ListDynamicConfig(ctx context.Context, request *types.ListDynamicConfigRequest) (_ *types.ListDynamicConfigResponse, retError error) {
-	defer log.CapturePanic(adh.GetLogger(), &retError)
+	defer func() { log.CapturePanic(recover(), adh.GetLogger(), &retError) }()
 	scope, sw := adh.startRequestProfile(ctx, metrics.AdminListDynamicConfigScope)
 	defer sw.Stop()
 

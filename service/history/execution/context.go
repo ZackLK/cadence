@@ -260,8 +260,9 @@ func (c *contextImpl) LoadWorkflowExecutionWithTaskVersion(
 
 	if c.mutableState == nil {
 		response, err := c.getWorkflowExecutionWithRetry(ctx, &persistence.GetWorkflowExecutionRequest{
-			DomainID:  c.domainID,
-			Execution: c.workflowExecution,
+			DomainID:   c.domainID,
+			Execution:  c.workflowExecution,
+			DomainName: domainEntry.GetInfo().Name,
 		})
 		if err != nil {
 			return nil, err
@@ -346,7 +347,7 @@ func (c *contextImpl) CreateWorkflowExecution(
 			c.Clear()
 		}
 	}()
-
+	domainName := c.GetDomainName()
 	createRequest := &persistence.CreateWorkflowExecutionRequest{
 		// workflow create mode & prev run ID & version
 		Mode:                     createMode,
@@ -354,6 +355,7 @@ func (c *contextImpl) CreateWorkflowExecution(
 		PreviousLastWriteVersion: prevLastWriteVersion,
 
 		NewWorkflowSnapshot: *newWorkflow,
+		DomainName:          domainName,
 	}
 
 	historySize += c.GetHistorySize()
@@ -373,7 +375,6 @@ func (c *contextImpl) CreateWorkflowExecution(
 	c.notifyTasksFromWorkflowSnapshot(newWorkflow)
 
 	// finally emit session stats
-	domainName := c.GetDomainName()
 	emitSessionUpdateStats(
 		c.metricsClient,
 		domainName,
@@ -490,7 +491,10 @@ func (c *contextImpl) ConflictResolveWorkflowExecution(
 	); err != nil {
 		return err
 	}
-
+	domain, errorDomainName := c.shard.GetDomainCache().GetDomainName(c.domainID)
+	if errorDomainName != nil {
+		return errorDomainName
+	}
 	resp, err := c.shard.ConflictResolveWorkflowExecution(ctx, &persistence.ConflictResolveWorkflowExecutionRequest{
 		// RangeID , this is set by shard context
 		Mode:                    conflictResolveMode,
@@ -498,6 +502,7 @@ func (c *contextImpl) ConflictResolveWorkflowExecution(
 		NewWorkflowSnapshot:     newWorkflow,
 		CurrentWorkflowMutation: currentWorkflow,
 		// Encoding, this is set by shard context
+		DomainName: domain,
 	})
 	if err != nil {
 		if c.isPersistenceTimeoutError(err) {
@@ -652,12 +657,16 @@ func (c *contextImpl) UpdateWorkflowExecutionTasks(
 	currentWorkflow.ExecutionStats = &persistence.ExecutionStats{
 		HistorySize: c.GetHistorySize(),
 	}
-
+	domainName, errorDomainName := c.shard.GetDomainCache().GetDomainName(c.domainID)
+	if errorDomainName != nil {
+		return errorDomainName
+	}
 	resp, err := c.updateWorkflowExecutionWithRetry(ctx, &persistence.UpdateWorkflowExecutionRequest{
 		// RangeID , this is set by shard context
 		Mode:                   persistence.UpdateWorkflowModeIgnoreCurrent,
 		UpdateWorkflowMutation: *currentWorkflow,
 		// Encoding, this is set by shard context
+		DomainName: domainName,
 	})
 	if err != nil {
 		if c.isPersistenceTimeoutError(err) {
@@ -774,13 +783,17 @@ func (c *contextImpl) UpdateWorkflowExecutionWithNew(
 	); err != nil {
 		return err
 	}
-
+	domain, errorDomainName := c.shard.GetDomainCache().GetDomainName(c.domainID)
+	if errorDomainName != nil {
+		return errorDomainName
+	}
 	resp, err := c.updateWorkflowExecutionWithRetry(ctx, &persistence.UpdateWorkflowExecutionRequest{
 		// RangeID , this is set by shard context
 		Mode:                   updateMode,
 		UpdateWorkflowMutation: *currentWorkflow,
 		NewWorkflowSnapshot:    newWorkflow,
 		// Encoding, this is set by shard context
+		DomainName: domain,
 	})
 	if err != nil {
 		if c.isPersistenceTimeoutError(err) {
@@ -944,6 +957,10 @@ func (c *contextImpl) PersistStartWorkflowBatchEvents(
 	}
 
 	domainID := workflowEvents.DomainID
+	domainName, err := c.shard.GetDomainCache().GetDomainName(domainID)
+	if err != nil {
+		return 0, err
+	}
 	workflowID := workflowEvents.WorkflowID
 	runID := workflowEvents.RunID
 	execution := types.WorkflowExecution{
@@ -962,6 +979,7 @@ func (c *contextImpl) PersistStartWorkflowBatchEvents(
 			Info:        persistence.BuildHistoryGarbageCleanupInfo(domainID, workflowID, runID),
 			BranchToken: branchToken,
 			Events:      events,
+			DomainName:  domainName,
 			// TransactionID is set by shard context
 		},
 	)

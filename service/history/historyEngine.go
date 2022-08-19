@@ -112,6 +112,7 @@ type (
 		crossClusterTaskProcessors common.Daemon
 		replicationTaskProcessors  []replication.TaskProcessor
 		replicationAckManager      replication.TaskAckManager
+		replicationHydrator        replication.TaskHydrator
 		publicClient               workflowserviceclient.Interface
 		eventsReapplier            ndc.EventsReapplier
 		matchingClient             matching.Client
@@ -156,6 +157,7 @@ func NewEngineWithShardContext(
 	historyV2Manager := shard.GetHistoryManager()
 	executionCache := execution.NewCache(shard)
 	failoverMarkerNotifier := failover.NewMarkerNotifier(shard, config, failoverCoordinator)
+	replicationHydrator := replication.NewDeferredTaskHydrator(shard.GetShardID(), historyV2Manager, executionCache, shard.GetDomainCache())
 	historyEngImpl := &historyEngineImpl{
 		currentClusterName:   currentClusterName,
 		shard:                shard,
@@ -203,9 +205,16 @@ func NewEngineWithShardContext(
 		queueTaskProcessor:     queueTaskProcessor,
 		clientChecker:          client.NewVersionChecker(),
 		failoverMarkerNotifier: failoverMarkerNotifier,
+		replicationHydrator:    replicationHydrator,
 		replicationAckManager: replication.NewTaskAckManager(
+			shard.GetShardID(),
 			shard,
-			executionCache,
+			shard.GetDomainCache(),
+			shard.GetMetricsClient(),
+			shard.GetLogger(),
+			shard.GetConfig(),
+			replication.NewDynamicTaskReader(shard.GetShardID(), executionManager, shard.GetTimeSource(), config),
+			replicationHydrator,
 		),
 	}
 	historyEngImpl.decisionHandler = decision.NewHandler(
@@ -218,7 +227,7 @@ func NewEngineWithShardContext(
 		shard.GetHistoryManager(),
 		common.CreatePersistenceRetryPolicy(),
 	)
-	openExecutionCheck := invariant.NewConcreteExecutionExists(pRetry)
+	openExecutionCheck := invariant.NewConcreteExecutionExists(pRetry, shard.GetDomainCache())
 
 	historyEngImpl.txProcessor = queue.NewTransferQueueProcessor(
 		shard,
@@ -1306,7 +1315,19 @@ func (e *historyEngineImpl) queryDirectlyThroughMatching(
 			scope.IncCounter(metrics.DirectQueryDispatchStickySuccessCount)
 			return &types.HistoryQueryWorkflowResponse{Response: matchingResp}, nil
 		}
-		if yarpcError, ok := err.(*yarpcerrors.Status); !ok || yarpcError.Code() != yarpcerrors.CodeDeadlineExceeded {
+		switch v := err.(type) {
+		case *types.StickyWorkerUnavailableError:
+		case *yarpcerrors.Status:
+			if v.Code() != yarpcerrors.CodeDeadlineExceeded {
+				e.logger.Error("query directly though matching on sticky failed, will not attempt query on non-sticky",
+					tag.WorkflowDomainName(queryRequest.GetDomain()),
+					tag.WorkflowID(queryRequest.Execution.GetWorkflowID()),
+					tag.WorkflowRunID(queryRequest.Execution.GetRunID()),
+					tag.WorkflowQueryType(queryRequest.Query.GetQueryType()),
+					tag.Error(err))
+				return nil, err
+			}
+		default:
 			e.logger.Error("query directly though matching on sticky failed, will not attempt query on non-sticky",
 				tag.WorkflowDomainName(queryRequest.GetDomain()),
 				tag.WorkflowID(queryRequest.Execution.GetWorkflowID()),
@@ -1320,7 +1341,8 @@ func (e *historyEngineImpl) queryDirectlyThroughMatching(
 				tag.WorkflowDomainName(queryRequest.GetDomain()),
 				tag.WorkflowID(queryRequest.Execution.GetWorkflowID()),
 				tag.WorkflowRunID(queryRequest.Execution.GetRunID()),
-				tag.WorkflowQueryType(queryRequest.Query.GetQueryType()))
+				tag.WorkflowQueryType(queryRequest.Query.GetQueryType()),
+				tag.Error(err))
 			resetContext, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			clearStickinessStopWatch := scope.StartTimer(metrics.DirectQueryDispatchClearStickinessLatency)
 			_, err := e.ResetStickyTaskList(resetContext, &types.HistoryResetStickyTaskListRequest{
@@ -2243,7 +2265,7 @@ func (e *historyEngineImpl) RequestCancelWorkflowExecution(
 		RunID:      request.WorkflowExecution.RunID,
 	}
 
-	return workflow.UpdateCurrentWithActionFunc(ctx, e.executionCache, e.executionManager, domainID, workflowExecution, e.timeSource.Now(),
+	return workflow.UpdateCurrentWithActionFunc(ctx, e.executionCache, e.executionManager, domainID, e.shard.GetDomainCache(), workflowExecution, e.timeSource.Now(),
 		func(wfContext execution.Context, mutableState execution.MutableState) (*workflow.UpdateAction, error) {
 			if !mutableState.IsWorkflowExecutionRunning() {
 				return nil, workflow.ErrAlreadyCompleted
@@ -2270,7 +2292,7 @@ func (e *historyEngineImpl) RequestCancelWorkflowExecution(
 				return nil, workflow.ErrCancellationAlreadyRequested
 			}
 
-			if _, err := mutableState.AddWorkflowExecutionCancelRequestedEvent("", req); err != nil {
+			if _, err := mutableState.AddWorkflowExecutionCancelRequestedEvent(req.CancelRequest.Cause, req); err != nil {
 				return nil, &types.InternalServiceError{Message: "Unable to cancel workflow execution."}
 			}
 
@@ -2291,7 +2313,6 @@ func (e *historyEngineImpl) SignalWorkflowExecution(
 		return errDomainDeprecated
 	}
 	domainID := domainEntry.GetInfo().ID
-
 	request := signalRequest.SignalRequest
 	parentExecution := signalRequest.ExternalWorkflowExecution
 	childWorkflowOnly := signalRequest.GetChildWorkflowOnly()
@@ -2305,6 +2326,7 @@ func (e *historyEngineImpl) SignalWorkflowExecution(
 		e.executionCache,
 		e.executionManager,
 		domainID,
+		e.shard.GetDomainCache(),
 		workflowExecution,
 		e.timeSource.Now(),
 		func(wfContext execution.Context, mutableState execution.MutableState) (*workflow.UpdateAction, error) {
@@ -2583,6 +2605,7 @@ func (e *historyEngineImpl) TerminateWorkflowExecution(
 		e.executionCache,
 		e.executionManager,
 		domainID,
+		e.shard.GetDomainCache(),
 		workflowExecution,
 		e.timeSource.Now(),
 		func(wfContext execution.Context, mutableState execution.MutableState) (*workflow.UpdateAction, error) {
@@ -2743,11 +2766,15 @@ func (e *historyEngineImpl) ResetWorkflowExecution(
 			Message: "Decision finish ID must be > 1 && <= workflow next event ID.",
 		}
 	}
-
+	domainName, err := e.shard.GetDomainCache().GetDomainName(domainID)
+	if err != nil {
+		return nil, err
+	}
 	// also load the current run of the workflow, it can be different from the base runID
 	resp, err := e.executionManager.GetCurrentExecution(ctx, &persistence.GetCurrentExecutionRequest{
 		DomainID:   domainID,
 		WorkflowID: request.WorkflowExecution.GetWorkflowID(),
+		DomainName: domainName,
 	})
 	if err != nil {
 		return nil, err
@@ -3224,7 +3251,17 @@ func (e *historyEngineImpl) GetDLQReplicationMessages(
 
 	tasks := make([]*types.ReplicationTask, 0, len(taskInfos))
 	for _, taskInfo := range taskInfos {
-		task, err := e.replicationAckManager.GetTask(ctx, taskInfo)
+		task, err := e.replicationHydrator.Hydrate(ctx, persistence.ReplicationTaskInfo{
+			DomainID:     taskInfo.DomainID,
+			WorkflowID:   taskInfo.WorkflowID,
+			RunID:        taskInfo.RunID,
+			TaskID:       taskInfo.TaskID,
+			TaskType:     int(taskInfo.TaskType),
+			FirstEventID: taskInfo.FirstEventID,
+			NextEventID:  taskInfo.NextEventID,
+			Version:      taskInfo.Version,
+			ScheduledID:  taskInfo.ScheduledID,
+		})
 		if err != nil {
 			e.logger.Error("Failed to fetch DLQ replication messages.", tag.Error(err))
 			return nil, err

@@ -59,6 +59,7 @@ type Config struct {
 	EnableStickyQuery               dynamicconfig.BoolPropertyFnWithDomainFilter
 	ShutdownDrainDuration           dynamicconfig.DurationPropertyFn
 	WorkflowDeletionJitterRange     dynamicconfig.IntPropertyFnWithDomainFilter
+	MaxResponseSize                 dynamicconfig.IntPropertyFn
 
 	// HistoryCache settings
 	// Change of these configs require shard restart
@@ -272,7 +273,6 @@ type Config struct {
 	ReplicationTaskProcessorNoTaskRetryWait            dynamicconfig.DurationPropertyFnWithShardIDFilter
 	ReplicationTaskProcessorCleanupInterval            dynamicconfig.DurationPropertyFnWithShardIDFilter
 	ReplicationTaskProcessorCleanupJitterCoefficient   dynamicconfig.FloatPropertyFnWithShardIDFilter
-	ReplicationTaskProcessorReadHistoryBatchSize       dynamicconfig.IntPropertyFn
 	ReplicationTaskProcessorStartWait                  dynamicconfig.DurationPropertyFnWithShardIDFilter
 	ReplicationTaskProcessorStartWaitJitterCoefficient dynamicconfig.FloatPropertyFnWithShardIDFilter
 	ReplicationTaskProcessorHostQPS                    dynamicconfig.FloatPropertyFn
@@ -359,6 +359,7 @@ func New(dc *dynamicconfig.Collection, numberOfShards int, storeType string, isA
 		StandbyTaskMissingEventsResendDelay:  dc.GetDurationProperty(dynamicconfig.StandbyTaskMissingEventsResendDelay),
 		StandbyTaskMissingEventsDiscardDelay: dc.GetDurationProperty(dynamicconfig.StandbyTaskMissingEventsDiscardDelay),
 		WorkflowDeletionJitterRange:          dc.GetIntPropertyFilteredByDomain(dynamicconfig.WorkflowDeletionJitterRange),
+		MaxResponseSize:                      dc.GetIntProperty(dynamicconfig.GRPCMaxSizeInByte),
 
 		TaskProcessRPS:                          dc.GetIntPropertyFilteredByDomain(dynamicconfig.TaskProcessRPS),
 		TaskSchedulerType:                       dc.GetIntProperty(dynamicconfig.TaskSchedulerType),
@@ -513,7 +514,6 @@ func New(dc *dynamicconfig.Collection, numberOfShards int, storeType string, isA
 		ReplicationTaskProcessorNoTaskRetryWait:            dc.GetDurationPropertyFilteredByShardID(dynamicconfig.ReplicationTaskProcessorNoTaskInitialWait),
 		ReplicationTaskProcessorCleanupInterval:            dc.GetDurationPropertyFilteredByShardID(dynamicconfig.ReplicationTaskProcessorCleanupInterval),
 		ReplicationTaskProcessorCleanupJitterCoefficient:   dc.GetFloat64PropertyFilteredByShardID(dynamicconfig.ReplicationTaskProcessorCleanupJitterCoefficient),
-		ReplicationTaskProcessorReadHistoryBatchSize:       dc.GetIntProperty(dynamicconfig.ReplicationTaskProcessorReadHistoryBatchSize),
 		ReplicationTaskProcessorStartWait:                  dc.GetDurationPropertyFilteredByShardID(dynamicconfig.ReplicationTaskProcessorStartWait),
 		ReplicationTaskProcessorStartWaitJitterCoefficient: dc.GetFloat64PropertyFilteredByShardID(dynamicconfig.ReplicationTaskProcessorStartWaitJitterCoefficient),
 		ReplicationTaskProcessorHostQPS:                    dc.GetFloat64Property(dynamicconfig.ReplicationTaskProcessorHostQPS),

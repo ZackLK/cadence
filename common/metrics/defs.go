@@ -795,8 +795,10 @@ const (
 
 // -- Operation scopes for Frontend service --
 const (
+	// FrontendRestartWorkflowExecutionScope is the metric for frontend.RestartWorkflowExecution
+	FrontendRestartWorkflowExecutionScope = iota + NumAdminScopes
 	// FrontendStartWorkflowExecutionScope is the metric scope for frontend.StartWorkflowExecution
-	FrontendStartWorkflowExecutionScope = iota + NumAdminScopes
+	FrontendStartWorkflowExecutionScope
 	// PollForDecisionTaskScope is the metric scope for frontend.PollForDecisionTask
 	FrontendPollForDecisionTaskScope
 	// FrontendPollForActivityTaskScope is the metric scope for frontend.PollForActivityTask
@@ -1553,6 +1555,7 @@ var ScopeDefs = map[ServiceIdx]map[int]scopeDefinition{
 		AdminDeleteWorkflowScope:                    {operation: "AdminDeleteWorkflow"},
 		MaintainCorruptWorkflowScope:                {operation: "MaintainCorruptWorkflow"},
 
+		FrontendRestartWorkflowExecutionScope:           {operation: "RestartWorkflowExecution"},
 		FrontendStartWorkflowExecutionScope:             {operation: "StartWorkflowExecution"},
 		FrontendPollForDecisionTaskScope:                {operation: "PollForDecisionTask"},
 		FrontendPollForActivityTaskScope:                {operation: "PollForActivityTask"},
@@ -1919,6 +1922,7 @@ const (
 	CadenceErrUnauthorizedPerTaskListCounter
 	CadenceErrAuthorizeFailedPerTaskListCounter
 	CadenceErrRemoteSyncMatchFailedPerTaskListCounter
+	CadenceErrStickyWorkerUnavailablePerTaskListCounter
 
 	CadenceShardSuccessGauge
 	CadenceShardFailureGauge
@@ -2477,6 +2481,9 @@ var MetricDefs = map[ServiceIdx]map[int]metricDefinition{
 		},
 		CadenceErrRemoteSyncMatchFailedPerTaskListCounter: {
 			metricName: "cadence_errors_remote_syncmatch_failed_per_tl", metricRollupName: "cadence_errors_remote_syncmatch_failed", metricType: Counter,
+		},
+		CadenceErrStickyWorkerUnavailablePerTaskListCounter: {
+			metricName: "cadence_errors_sticky_worker_unavailable_per_tl", metricRollupName: "cadence_errors_sticky_worker_unavailable_per_tl", metricType: Counter,
 		},
 		CadenceShardSuccessGauge:             {metricName: "cadence_shard_success", metricType: Gauge},
 		CadenceShardFailureGauge:             {metricName: "cadence_shard_failure", metricType: Gauge},

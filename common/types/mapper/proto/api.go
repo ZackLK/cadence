@@ -2652,6 +2652,7 @@ func FromRequestCancelWorkflowExecutionRequest(t *types.RequestCancelWorkflowExe
 		WorkflowExecution: FromWorkflowExecution(t.WorkflowExecution),
 		Identity:          t.Identity,
 		RequestId:         t.RequestID,
+		Cause:             t.Cause,
 	}
 }
 
@@ -2664,6 +2665,7 @@ func ToRequestCancelWorkflowExecutionRequest(t *apiv1.RequestCancelWorkflowExecu
 		WorkflowExecution: ToWorkflowExecution(t.WorkflowExecution),
 		Identity:          t.Identity,
 		RequestID:         t.RequestId,
+		Cause:             t.Cause,
 	}
 }
 
@@ -3106,6 +3108,26 @@ func ToRetryPolicy(t *apiv1.RetryPolicy) *types.RetryPolicy {
 		MaximumAttempts:             t.MaximumAttempts,
 		NonRetriableErrorReasons:    t.NonRetryableErrorReasons,
 		ExpirationIntervalInSeconds: common.Int32Default(durationToSeconds(t.ExpirationInterval)),
+	}
+}
+
+func FromRestartWorkflowExecutionResponse(t *types.RestartWorkflowExecutionResponse) *apiv1.RestartWorkflowExecutionResponse {
+	if t == nil {
+		return nil
+	}
+	return &apiv1.RestartWorkflowExecutionResponse{
+		RunId: t.RunID,
+	}
+}
+
+func ToRestartWorkflowExecutionRequest(t *apiv1.RestartWorkflowExecutionRequest) *types.RestartWorkflowExecutionRequest {
+	if t == nil {
+		return nil
+	}
+	return &types.RestartWorkflowExecutionRequest{
+		Domain:            t.Domain,
+		WorkflowExecution: ToWorkflowExecution(t.WorkflowExecution),
+		Identity:          t.Identity,
 	}
 }
 
@@ -3589,6 +3611,26 @@ func ToStartTimerDecisionAttributes(t *apiv1.StartTimerDecisionAttributes) *type
 	return &types.StartTimerDecisionAttributes{
 		TimerID:                   t.TimerId,
 		StartToFireTimeoutSeconds: int32To64(durationToSeconds(t.StartToFireTimeout)),
+	}
+}
+
+func FromRestartWorkflowExecutionRequest(t *types.RestartWorkflowExecutionRequest) *apiv1.RestartWorkflowExecutionRequest {
+	if t == nil {
+		return nil
+	}
+	return &apiv1.RestartWorkflowExecutionRequest{
+		Domain:            t.Domain,
+		WorkflowExecution: FromWorkflowExecution(t.WorkflowExecution),
+		Identity:          t.Identity,
+	}
+}
+
+func ToRestartStartWorkflowExecutionResponse(t *apiv1.RestartWorkflowExecutionResponse) *types.RestartWorkflowExecutionResponse {
+	if t == nil {
+		return nil
+	}
+	return &types.RestartWorkflowExecutionResponse{
+		RunID: t.RunId,
 	}
 }
 

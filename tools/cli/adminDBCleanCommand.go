@@ -31,9 +31,11 @@ import (
 	"io"
 	"os"
 
+	"github.com/davecgh/go-spew/spew"
 	"github.com/urfave/cli"
 
 	"github.com/uber/cadence/common"
+	"github.com/uber/cadence/common/cache"
 	"github.com/uber/cadence/common/codec"
 	"github.com/uber/cadence/common/persistence"
 	"github.com/uber/cadence/common/reconciliation/entity"
@@ -66,8 +68,14 @@ func AdminDBDataDecodeThrift(c *cli.Context) {
 					ErrorAndExit("cannot encode back to confirm", err)
 				}
 				if bytes.Equal(data, data2) {
-					fmt.Printf("=======Decode into type %v ========\n", typeName)
-					fmt.Println(anyToString(t, true, 0))
+					fmt.Printf("======= Decode into type %v ========\n", typeName)
+					spew.Dump(t)
+					// json-ify it for easier mechanical use
+					js, err := json.Marshal(t)
+					if err == nil {
+						fmt.Println("======= As JSON ========")
+						fmt.Println(string(js))
+					}
 					found = true
 				}
 			}
@@ -181,7 +189,7 @@ func fixExecution(
 	var ivs []invariant.Invariant
 
 	for _, fn := range invariants {
-		ivs = append(ivs, fn(pr))
+		ivs = append(ivs, fn(pr, cache.NewNoOpDomainCache()))
 	}
 
 	ctx, cancel := newContext(c)

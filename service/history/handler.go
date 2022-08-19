@@ -33,6 +33,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/uber/cadence/common/membership"
+	"github.com/uber/cadence/common/types/mapper/proto"
 
 	"github.com/pborman/uuid"
 	"go.uber.org/yarpc/yarpcerrors"
@@ -298,7 +299,7 @@ func (h *handlerImpl) RecordActivityTaskHeartbeat(
 	wrappedRequest *types.HistoryRecordActivityTaskHeartbeatRequest,
 ) (resp *types.RecordActivityTaskHeartbeatResponse, retError error) {
 
-	defer log.CapturePanic(h.GetLogger(), &retError)
+	defer func() { log.CapturePanic(recover(), h.GetLogger(), &retError) }()
 	h.startWG.Wait()
 
 	scope, sw := h.startRequestProfile(ctx, metrics.HistoryRecordActivityTaskHeartbeatScope)
@@ -345,7 +346,7 @@ func (h *handlerImpl) RecordActivityTaskStarted(
 	recordRequest *types.RecordActivityTaskStartedRequest,
 ) (resp *types.RecordActivityTaskStartedResponse, retError error) {
 
-	defer log.CapturePanic(h.GetLogger(), &retError)
+	defer func() { log.CapturePanic(recover(), h.GetLogger(), &retError) }()
 	h.startWG.Wait()
 
 	scope, sw := h.startRequestProfile(ctx, metrics.HistoryRecordActivityTaskStartedScope)
@@ -391,7 +392,7 @@ func (h *handlerImpl) RecordDecisionTaskStarted(
 	recordRequest *types.RecordDecisionTaskStartedRequest,
 ) (resp *types.RecordDecisionTaskStartedResponse, retError error) {
 
-	defer log.CapturePanic(h.GetLogger(), &retError)
+	defer func() { log.CapturePanic(recover(), h.GetLogger(), &retError) }()
 	h.startWG.Wait()
 
 	scope, sw := h.startRequestProfile(ctx, metrics.HistoryRecordDecisionTaskStartedScope)
@@ -447,7 +448,7 @@ func (h *handlerImpl) RespondActivityTaskCompleted(
 	wrappedRequest *types.HistoryRespondActivityTaskCompletedRequest,
 ) (retError error) {
 
-	defer log.CapturePanic(h.GetLogger(), &retError)
+	defer func() { log.CapturePanic(recover(), h.GetLogger(), &retError) }()
 	h.startWG.Wait()
 
 	scope, sw := h.startRequestProfile(ctx, metrics.HistoryRespondActivityTaskCompletedScope)
@@ -494,7 +495,7 @@ func (h *handlerImpl) RespondActivityTaskFailed(
 	wrappedRequest *types.HistoryRespondActivityTaskFailedRequest,
 ) (retError error) {
 
-	defer log.CapturePanic(h.GetLogger(), &retError)
+	defer func() { log.CapturePanic(recover(), h.GetLogger(), &retError) }()
 	h.startWG.Wait()
 
 	scope, sw := h.startRequestProfile(ctx, metrics.HistoryRespondActivityTaskFailedScope)
@@ -541,7 +542,7 @@ func (h *handlerImpl) RespondActivityTaskCanceled(
 	wrappedRequest *types.HistoryRespondActivityTaskCanceledRequest,
 ) (retError error) {
 
-	defer log.CapturePanic(h.GetLogger(), &retError)
+	defer func() { log.CapturePanic(recover(), h.GetLogger(), &retError) }()
 	h.startWG.Wait()
 
 	scope, sw := h.startRequestProfile(ctx, metrics.HistoryRespondActivityTaskCanceledScope)
@@ -588,7 +589,7 @@ func (h *handlerImpl) RespondDecisionTaskCompleted(
 	wrappedRequest *types.HistoryRespondDecisionTaskCompletedRequest,
 ) (resp *types.HistoryRespondDecisionTaskCompletedResponse, retError error) {
 
-	defer log.CapturePanic(h.GetLogger(), &retError)
+	defer func() { log.CapturePanic(recover(), h.GetLogger(), &retError) }()
 	h.startWG.Wait()
 
 	scope, sw := h.startRequestProfile(ctx, metrics.HistoryRespondDecisionTaskCompletedScope)
@@ -644,7 +645,7 @@ func (h *handlerImpl) RespondDecisionTaskFailed(
 	wrappedRequest *types.HistoryRespondDecisionTaskFailedRequest,
 ) (retError error) {
 
-	defer log.CapturePanic(h.GetLogger(), &retError)
+	defer func() { log.CapturePanic(recover(), h.GetLogger(), &retError) }()
 	h.startWG.Wait()
 
 	scope, sw := h.startRequestProfile(ctx, metrics.HistoryRespondDecisionTaskFailedScope)
@@ -710,7 +711,7 @@ func (h *handlerImpl) StartWorkflowExecution(
 	wrappedRequest *types.HistoryStartWorkflowExecutionRequest,
 ) (resp *types.StartWorkflowExecutionResponse, retError error) {
 
-	defer log.CapturePanic(h.GetLogger(), &retError)
+	defer func() { log.CapturePanic(recover(), h.GetLogger(), &retError) }()
 	h.startWG.Wait()
 
 	scope, sw := h.startRequestProfile(ctx, metrics.HistoryStartWorkflowExecutionScope)
@@ -746,7 +747,7 @@ func (h *handlerImpl) DescribeHistoryHost(
 	request *types.DescribeHistoryHostRequest,
 ) (resp *types.DescribeHistoryHostResponse, retError error) {
 
-	defer log.CapturePanic(h.GetLogger(), &retError)
+	defer func() { log.CapturePanic(recover(), h.GetLogger(), &retError) }()
 	h.startWG.Wait()
 
 	numOfItemsInCacheByID, numOfItemsInCacheByName := h.GetDomainCache().GetCacheSize()
@@ -822,7 +823,7 @@ func (h *handlerImpl) ResetQueue(
 	request *types.ResetQueueRequest,
 ) (retError error) {
 
-	defer log.CapturePanic(h.GetLogger(), &retError)
+	defer func() { log.CapturePanic(recover(), h.GetLogger(), &retError) }()
 	h.startWG.Wait()
 
 	scope, sw := h.startRequestProfile(ctx, metrics.HistoryResetQueueScope)
@@ -856,7 +857,7 @@ func (h *handlerImpl) DescribeQueue(
 	request *types.DescribeQueueRequest,
 ) (resp *types.DescribeQueueResponse, retError error) {
 
-	defer log.CapturePanic(h.GetLogger(), &retError)
+	defer func() { log.CapturePanic(recover(), h.GetLogger(), &retError) }()
 	h.startWG.Wait()
 
 	scope, sw := h.startRequestProfile(ctx, metrics.HistoryDescribeQueueScope)
@@ -890,7 +891,7 @@ func (h *handlerImpl) DescribeMutableState(
 	request *types.DescribeMutableStateRequest,
 ) (resp *types.DescribeMutableStateResponse, retError error) {
 
-	defer log.CapturePanic(h.GetLogger(), &retError)
+	defer func() { log.CapturePanic(recover(), h.GetLogger(), &retError) }()
 	h.startWG.Wait()
 
 	scope, sw := h.startRequestProfile(ctx, metrics.HistoryDescribeMutabelStateScope)
@@ -921,7 +922,7 @@ func (h *handlerImpl) GetMutableState(
 	getRequest *types.GetMutableStateRequest,
 ) (resp *types.GetMutableStateResponse, retError error) {
 
-	defer log.CapturePanic(h.GetLogger(), &retError)
+	defer func() { log.CapturePanic(recover(), h.GetLogger(), &retError) }()
 	h.startWG.Wait()
 
 	scope, sw := h.startRequestProfile(ctx, metrics.HistoryGetMutableStateScope)
@@ -956,7 +957,7 @@ func (h *handlerImpl) PollMutableState(
 	getRequest *types.PollMutableStateRequest,
 ) (resp *types.PollMutableStateResponse, retError error) {
 
-	defer log.CapturePanic(h.GetLogger(), &retError)
+	defer func() { log.CapturePanic(recover(), h.GetLogger(), &retError) }()
 	h.startWG.Wait()
 
 	scope, sw := h.startRequestProfile(ctx, metrics.HistoryPollMutableStateScope)
@@ -991,7 +992,7 @@ func (h *handlerImpl) DescribeWorkflowExecution(
 	request *types.HistoryDescribeWorkflowExecutionRequest,
 ) (resp *types.DescribeWorkflowExecutionResponse, retError error) {
 
-	defer log.CapturePanic(h.GetLogger(), &retError)
+	defer func() { log.CapturePanic(recover(), h.GetLogger(), &retError) }()
 	h.startWG.Wait()
 
 	scope, sw := h.startRequestProfile(ctx, metrics.HistoryDescribeWorkflowExecutionScope)
@@ -1026,7 +1027,7 @@ func (h *handlerImpl) RequestCancelWorkflowExecution(
 	request *types.HistoryRequestCancelWorkflowExecutionRequest,
 ) (retError error) {
 
-	defer log.CapturePanic(h.GetLogger(), &retError)
+	defer func() { log.CapturePanic(recover(), h.GetLogger(), &retError) }()
 	h.startWG.Wait()
 
 	scope, sw := h.startRequestProfile(ctx, metrics.HistoryRequestCancelWorkflowExecutionScope)
@@ -1073,7 +1074,7 @@ func (h *handlerImpl) SignalWorkflowExecution(
 	wrappedRequest *types.HistorySignalWorkflowExecutionRequest,
 ) (retError error) {
 
-	defer log.CapturePanic(h.GetLogger(), &retError)
+	defer func() { log.CapturePanic(recover(), h.GetLogger(), &retError) }()
 	h.startWG.Wait()
 
 	scope, sw := h.startRequestProfile(ctx, metrics.HistorySignalWorkflowExecutionScope)
@@ -1117,7 +1118,7 @@ func (h *handlerImpl) SignalWithStartWorkflowExecution(
 	wrappedRequest *types.HistorySignalWithStartWorkflowExecutionRequest,
 ) (resp *types.StartWorkflowExecutionResponse, retError error) {
 
-	defer log.CapturePanic(h.GetLogger(), &retError)
+	defer func() { log.CapturePanic(recover(), h.GetLogger(), &retError) }()
 	h.startWG.Wait()
 
 	scope, sw := h.startRequestProfile(ctx, metrics.HistorySignalWithStartWorkflowExecutionScope)
@@ -1158,7 +1159,7 @@ func (h *handlerImpl) RemoveSignalMutableState(
 	wrappedRequest *types.RemoveSignalMutableStateRequest,
 ) (retError error) {
 
-	defer log.CapturePanic(h.GetLogger(), &retError)
+	defer func() { log.CapturePanic(recover(), h.GetLogger(), &retError) }()
 	h.startWG.Wait()
 
 	scope, sw := h.startRequestProfile(ctx, metrics.HistoryRemoveSignalMutableStateScope)
@@ -1199,7 +1200,7 @@ func (h *handlerImpl) TerminateWorkflowExecution(
 	wrappedRequest *types.HistoryTerminateWorkflowExecutionRequest,
 ) (retError error) {
 
-	defer log.CapturePanic(h.GetLogger(), &retError)
+	defer func() { log.CapturePanic(recover(), h.GetLogger(), &retError) }()
 	h.startWG.Wait()
 
 	scope, sw := h.startRequestProfile(ctx, metrics.HistoryTerminateWorkflowExecutionScope)
@@ -1240,7 +1241,7 @@ func (h *handlerImpl) ResetWorkflowExecution(
 	wrappedRequest *types.HistoryResetWorkflowExecutionRequest,
 ) (resp *types.ResetWorkflowExecutionResponse, retError error) {
 
-	defer log.CapturePanic(h.GetLogger(), &retError)
+	defer func() { log.CapturePanic(recover(), h.GetLogger(), &retError) }()
 	h.startWG.Wait()
 
 	scope, sw := h.startRequestProfile(ctx, metrics.HistoryResetWorkflowExecutionScope)
@@ -1279,7 +1280,7 @@ func (h *handlerImpl) QueryWorkflow(
 	ctx context.Context,
 	request *types.HistoryQueryWorkflowRequest,
 ) (resp *types.HistoryQueryWorkflowResponse, retError error) {
-	defer log.CapturePanic(h.GetLogger(), &retError)
+	defer func() { log.CapturePanic(recover(), h.GetLogger(), &retError) }()
 	h.startWG.Wait()
 
 	scope, sw := h.startRequestProfile(ctx, metrics.HistoryQueryWorkflowScope)
@@ -1321,7 +1322,7 @@ func (h *handlerImpl) ScheduleDecisionTask(
 	request *types.ScheduleDecisionTaskRequest,
 ) (retError error) {
 
-	defer log.CapturePanic(h.GetLogger(), &retError)
+	defer func() { log.CapturePanic(recover(), h.GetLogger(), &retError) }()
 	h.startWG.Wait()
 
 	scope, sw := h.startRequestProfile(ctx, metrics.HistoryScheduleDecisionTaskScope)
@@ -1366,7 +1367,7 @@ func (h *handlerImpl) RecordChildExecutionCompleted(
 	request *types.RecordChildExecutionCompletedRequest,
 ) (retError error) {
 
-	defer log.CapturePanic(h.GetLogger(), &retError)
+	defer func() { log.CapturePanic(recover(), h.GetLogger(), &retError) }()
 	h.startWG.Wait()
 
 	scope, sw := h.startRequestProfile(ctx, metrics.HistoryRecordChildExecutionCompletedScope)
@@ -1416,7 +1417,7 @@ func (h *handlerImpl) ResetStickyTaskList(
 	resetRequest *types.HistoryResetStickyTaskListRequest,
 ) (resp *types.HistoryResetStickyTaskListResponse, retError error) {
 
-	defer log.CapturePanic(h.GetLogger(), &retError)
+	defer func() { log.CapturePanic(recover(), h.GetLogger(), &retError) }()
 	h.startWG.Wait()
 
 	scope, sw := h.startRequestProfile(ctx, metrics.HistoryResetStickyTaskListScope)
@@ -1455,7 +1456,7 @@ func (h *handlerImpl) ReplicateEventsV2(
 	replicateRequest *types.ReplicateEventsV2Request,
 ) (retError error) {
 
-	defer log.CapturePanic(h.GetLogger(), &retError)
+	defer func() { log.CapturePanic(recover(), h.GetLogger(), &retError) }()
 	h.startWG.Wait()
 
 	if h.isShuttingDown() {
@@ -1495,7 +1496,7 @@ func (h *handlerImpl) SyncShardStatus(
 	syncShardStatusRequest *types.SyncShardStatusRequest,
 ) (retError error) {
 
-	defer log.CapturePanic(h.GetLogger(), &retError)
+	defer func() { log.CapturePanic(recover(), h.GetLogger(), &retError) }()
 	h.startWG.Wait()
 
 	scope, sw := h.startRequestProfile(ctx, metrics.HistorySyncShardStatusScope)
@@ -1537,7 +1538,7 @@ func (h *handlerImpl) SyncActivity(
 	syncActivityRequest *types.SyncActivityRequest,
 ) (retError error) {
 
-	defer log.CapturePanic(h.GetLogger(), &retError)
+	defer func() { log.CapturePanic(recover(), h.GetLogger(), &retError) }()
 	h.startWG.Wait()
 
 	scope, sw := h.startRequestProfile(ctx, metrics.HistorySyncActivityScope)
@@ -1583,7 +1584,7 @@ func (h *handlerImpl) GetReplicationMessages(
 	ctx context.Context,
 	request *types.GetReplicationMessagesRequest,
 ) (resp *types.GetReplicationMessagesResponse, retError error) {
-	defer log.CapturePanic(h.GetLogger(), &retError)
+	defer func() { log.CapturePanic(recover(), h.GetLogger(), &retError) }()
 	h.startWG.Wait()
 
 	h.GetLogger().Debug("Received GetReplicationMessages call.")
@@ -1624,11 +1625,28 @@ func (h *handlerImpl) GetReplicationMessages(
 
 	wg.Wait()
 
+	responseSize := 0
+	maxResponseSize := h.config.MaxResponseSize()
+
 	messagesByShard := make(map[int32]*types.ReplicationMessages)
 	result.Range(func(key, value interface{}) bool {
 		shardID := key.(int32)
 		tasks := value.(*types.ReplicationMessages)
-		messagesByShard[shardID] = tasks
+
+		size := proto.FromReplicationMessages(tasks).Size()
+		if (responseSize + size) >= maxResponseSize {
+			// Log shards that did not fit for debugging purposes
+			h.GetLogger().Warn("Replication messages did not fit in the response (history host)",
+				tag.ShardID(int(shardID)),
+				tag.ResponseSize(size),
+				tag.ResponseTotalSize(responseSize),
+				tag.ResponseMaxSize(maxResponseSize),
+			)
+		} else {
+			responseSize += size
+			messagesByShard[shardID] = tasks
+		}
+
 		return true
 	})
 
@@ -1642,7 +1660,7 @@ func (h *handlerImpl) GetDLQReplicationMessages(
 	ctx context.Context,
 	request *types.GetDLQReplicationMessagesRequest,
 ) (resp *types.GetDLQReplicationMessagesResponse, retError error) {
-	defer log.CapturePanic(h.GetLogger(), &retError)
+	defer func() { log.CapturePanic(recover(), h.GetLogger(), &retError) }()
 	h.startWG.Wait()
 
 	_, sw := h.startRequestProfile(ctx, metrics.HistoryGetDLQReplicationMessagesScope)
@@ -1718,7 +1736,7 @@ func (h *handlerImpl) ReapplyEvents(
 	request *types.HistoryReapplyEventsRequest,
 ) (retError error) {
 
-	defer log.CapturePanic(h.GetLogger(), &retError)
+	defer func() { log.CapturePanic(recover(), h.GetLogger(), &retError) }()
 	h.startWG.Wait()
 
 	scope, sw := h.startRequestProfile(ctx, metrics.HistoryReapplyEventsScope)
@@ -1760,7 +1778,7 @@ func (h *handlerImpl) CountDLQMessages(
 	ctx context.Context,
 	request *types.CountDLQMessagesRequest,
 ) (resp *types.HistoryCountDLQMessagesResponse, retError error) {
-	defer log.CapturePanic(h.GetLogger(), &retError)
+	defer func() { log.CapturePanic(recover(), h.GetLogger(), &retError) }()
 	h.startWG.Wait()
 
 	scope, sw := h.startRequestProfile(ctx, metrics.HistoryCountDLQMessagesScope)
@@ -1776,7 +1794,7 @@ func (h *handlerImpl) CountDLQMessages(
 	for _, shardID := range h.controller.ShardIDs() {
 		shardID := shardID
 		g.Go(func() (e error) {
-			defer log.CapturePanic(h.GetLogger(), &e)
+			defer func() { log.CapturePanic(recover(), h.GetLogger(), &e) }()
 
 			engine, err := h.controller.GetEngineForShard(int(shardID))
 			if err != nil {
@@ -1808,7 +1826,7 @@ func (h *handlerImpl) ReadDLQMessages(
 	request *types.ReadDLQMessagesRequest,
 ) (resp *types.ReadDLQMessagesResponse, retError error) {
 
-	defer log.CapturePanic(h.GetLogger(), &retError)
+	defer func() { log.CapturePanic(recover(), h.GetLogger(), &retError) }()
 	h.startWG.Wait()
 
 	scope, sw := h.startRequestProfile(ctx, metrics.HistoryReadDLQMessagesScope)
@@ -1832,7 +1850,7 @@ func (h *handlerImpl) PurgeDLQMessages(
 	request *types.PurgeDLQMessagesRequest,
 ) (retError error) {
 
-	defer log.CapturePanic(h.GetLogger(), &retError)
+	defer func() { log.CapturePanic(recover(), h.GetLogger(), &retError) }()
 	h.startWG.Wait()
 
 	scope, sw := h.startRequestProfile(ctx, metrics.HistoryPurgeDLQMessagesScope)
@@ -1856,7 +1874,7 @@ func (h *handlerImpl) MergeDLQMessages(
 	request *types.MergeDLQMessagesRequest,
 ) (resp *types.MergeDLQMessagesResponse, retError error) {
 
-	defer log.CapturePanic(h.GetLogger(), &retError)
+	defer func() { log.CapturePanic(recover(), h.GetLogger(), &retError) }()
 	h.startWG.Wait()
 
 	if h.isShuttingDown() {
@@ -1932,7 +1950,7 @@ func (h *handlerImpl) GetCrossClusterTasks(
 	ctx context.Context,
 	request *types.GetCrossClusterTasksRequest,
 ) (resp *types.GetCrossClusterTasksResponse, retError error) {
-	defer log.CapturePanic(h.GetLogger(), &retError)
+	defer func() { log.CapturePanic(recover(), h.GetLogger(), &retError) }()
 	h.startWG.Wait()
 
 	_, sw := h.startRequestProfile(ctx, metrics.HistoryGetCrossClusterTasksScope)
@@ -1994,7 +2012,7 @@ func (h *handlerImpl) RespondCrossClusterTasksCompleted(
 	ctx context.Context,
 	request *types.RespondCrossClusterTasksCompletedRequest,
 ) (resp *types.RespondCrossClusterTasksCompletedResponse, retError error) {
-	defer log.CapturePanic(h.GetLogger(), &retError)
+	defer func() { log.CapturePanic(recover(), h.GetLogger(), &retError) }()
 	h.startWG.Wait()
 
 	scope, sw := h.startRequestProfile(ctx, metrics.HistoryRespondCrossClusterTasksCompletedScope)
@@ -2031,7 +2049,7 @@ func (h *handlerImpl) GetFailoverInfo(
 	ctx context.Context,
 	request *types.GetFailoverInfoRequest,
 ) (resp *types.GetFailoverInfoResponse, retError error) {
-	defer log.CapturePanic(h.GetLogger(), &retError)
+	defer func() { log.CapturePanic(recover(), h.GetLogger(), &retError) }()
 	h.startWG.Wait()
 
 	scope, sw := h.startRequestProfile(ctx, metrics.HistoryGetFailoverInfoScope)
