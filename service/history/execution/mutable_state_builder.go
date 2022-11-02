@@ -77,6 +77,8 @@ var (
 	ErrEventsAfterWorkflowFinish = &types.InternalServiceError{Message: "error validating last event being workflow finish event"}
 	// ErrMissingVersionHistories is the error indicating cadence failed to process 2dc workflow type.
 	ErrMissingVersionHistories = &types.BadRequestError{Message: "versionHistories is empty, which is required for NDC feature. It's probably from deprecated 2dc workflows"}
+	// ErrTooManyPendingActivities is the error that currently there are too many pending activities in the workflow
+	ErrTooManyPendingActivities = &types.InternalServiceError{Message: "Too many pending activities"}
 )
 
 type (
@@ -150,13 +152,14 @@ type (
 		decisionTaskManager mutableStateDecisionTaskManager
 		queryRegistry       query.Registry
 
-		shard           shard.Context
-		clusterMetadata cluster.Metadata
-		eventsCache     events.Cache
-		config          *config.Config
-		timeSource      clock.TimeSource
-		logger          log.Logger
-		metricsClient   metrics.Client
+		shard                      shard.Context
+		clusterMetadata            cluster.Metadata
+		eventsCache                events.Cache
+		config                     *config.Config
+		timeSource                 clock.TimeSource
+		logger                     log.Logger
+		metricsClient              metrics.Client
+		pendingActivityWarningSent bool
 	}
 )
 
@@ -962,6 +965,12 @@ func (e *mutableStateBuilder) GetActivityScheduledEvent(
 		// do not return the original error
 		// since original error can be of type entity not exists
 		// which can cause task processing side to fail silently
+		// However, if the error is a persistence transient error,
+		// we return the original error, because we fail to get
+		// the event because of failure from database
+		if persistence.IsTransientError(err) {
+			return nil, err
+		}
 		return nil, ErrMissingActivityScheduledEvent
 	}
 	return scheduledEvent, nil
@@ -1032,6 +1041,12 @@ func (e *mutableStateBuilder) GetChildExecutionInitiatedEvent(
 		// do not return the original error
 		// since original error can be of type entity not exists
 		// which can cause task processing side to fail silently
+		// However, if the error is a persistence transient error,
+		// we return the original error, because we fail to get
+		// the event because of failure from database
+		if persistence.IsTransientError(err) {
+			return nil, err
+		}
 		return nil, ErrMissingChildWorkflowInitiatedEvent
 	}
 	return initiatedEvent, nil
@@ -1139,6 +1154,12 @@ func (e *mutableStateBuilder) GetCompletionEvent(
 		// do not return the original error
 		// since original error can be of type entity not exists
 		// which can cause task processing side to fail silently
+		// However, if the error is a persistence transient error,
+		// we return the original error, because we fail to get
+		// the event because of failure from database
+		if persistence.IsTransientError(err) {
+			return nil, err
+		}
 		return nil, ErrMissingWorkflowCompletionEvent
 	}
 
@@ -1169,6 +1190,12 @@ func (e *mutableStateBuilder) GetStartEvent(
 		// do not return the original error
 		// since original error can be of type entity not exists
 		// which can cause task processing side to fail silently
+		// However, if the error is a persistence transient error,
+		// we return the original error, because we fail to get
+		// the event because of failure from database
+		if persistence.IsTransientError(err) {
+			return nil, err
+		}
 		return nil, ErrMissingWorkflowStartEvent
 	}
 	return startEvent, nil
@@ -1544,20 +1571,7 @@ func (e *mutableStateBuilder) GetPreviousStartedEventID() int64 {
 }
 
 func (e *mutableStateBuilder) IsWorkflowExecutionRunning() bool {
-	switch e.executionInfo.State {
-	case persistence.WorkflowStateCreated:
-		return true
-	case persistence.WorkflowStateRunning:
-		return true
-	case persistence.WorkflowStateCompleted:
-		return false
-	case persistence.WorkflowStateZombie:
-		return false
-	case persistence.WorkflowStateCorrupted:
-		return false
-	default:
-		panic(fmt.Sprintf("unknown workflow state: %v", e.executionInfo.State))
-	}
+	return e.executionInfo.IsRunning()
 }
 
 func (e *mutableStateBuilder) IsWorkflowCompleted() bool {
@@ -1611,6 +1625,7 @@ func (e *mutableStateBuilder) addWorkflowExecutionStartedEventForContinueAsNew(
 	previousExecutionState MutableState,
 	attributes *types.ContinueAsNewWorkflowExecutionDecisionAttributes,
 	firstRunID string,
+	firstScheduledTime time.Time,
 ) (*types.HistoryEvent, error) {
 
 	previousExecutionInfo := previousExecutionState.GetExecutionInfo()
@@ -1684,7 +1699,7 @@ func (e *mutableStateBuilder) addWorkflowExecutionStartedEventForContinueAsNew(
 		parentDomainID = &parentExecutionInfo.DomainUUID
 	}
 
-	event := e.hBuilder.AddWorkflowExecutionStartedEvent(req, previousExecutionInfo, firstRunID, execution.GetRunID())
+	event := e.hBuilder.AddWorkflowExecutionStartedEvent(req, previousExecutionInfo, firstRunID, execution.GetRunID(), firstScheduledTime)
 	if err := e.ReplicateWorkflowExecutionStartedEvent(
 		parentDomainID,
 		execution,
@@ -1739,7 +1754,8 @@ func (e *mutableStateBuilder) AddWorkflowExecutionStartedEvent(
 		return nil, e.createInternalServerError(opTag)
 	}
 
-	event := e.hBuilder.AddWorkflowExecutionStartedEvent(startRequest, nil, execution.GetRunID(), execution.GetRunID())
+	event := e.hBuilder.AddWorkflowExecutionStartedEvent(startRequest, nil, execution.GetRunID(), execution.GetRunID(),
+		time.Now())
 
 	var parentDomainID *string
 	if startRequest.ParentExecutionInfo != nil {
@@ -2130,6 +2146,28 @@ func (e *mutableStateBuilder) AddActivityTaskScheduledEvent(
 			tag.WorkflowEventID(e.GetNextEventID()),
 			tag.ErrorTypeInvalidHistoryAction)
 		return nil, nil, nil, false, false, e.createCallerError(opTag)
+	}
+
+	pendingActivitiesCount := len(e.pendingActivityInfoIDs)
+
+	if pendingActivitiesCount >= e.config.PendingActivitiesCountLimitError() {
+		e.logger.Error("Pending activity count exceeds error limit",
+			tag.WorkflowDomainName(e.GetDomainEntry().GetInfo().Name),
+			tag.WorkflowID(e.executionInfo.WorkflowID),
+			tag.WorkflowRunID(e.executionInfo.RunID),
+			tag.Number(int64(pendingActivitiesCount)))
+
+		if e.config.PendingActivityValidationEnabled() {
+			return nil, nil, nil, false, false, ErrTooManyPendingActivities
+		}
+	} else if pendingActivitiesCount >= e.config.PendingActivitiesCountLimitWarn() && !e.pendingActivityWarningSent {
+		e.logger.Warn("Pending activity count exceeds warn limit",
+			tag.WorkflowDomainName(e.GetDomainEntry().GetInfo().Name),
+			tag.WorkflowID(e.executionInfo.WorkflowID),
+			tag.WorkflowRunID(e.executionInfo.RunID),
+			tag.Number(int64(pendingActivitiesCount)))
+
+		e.pendingActivityWarningSent = true
 	}
 
 	event := e.hBuilder.AddActivityTaskScheduledEvent(decisionCompletedEventID, attributes)
@@ -3372,6 +3410,7 @@ func (e *mutableStateBuilder) AddContinueAsNewEvent(
 		return nil, nil, err
 	}
 	firstRunID := currentStartEvent.GetWorkflowExecutionStartedEventAttributes().GetFirstExecutionRunID()
+	firstScheduleTime := currentStartEvent.GetWorkflowExecutionStartedEventAttributes().GetFirstScheduledTime()
 	domainID := e.domainEntry.GetInfo().ID
 	newStateBuilder := NewMutableStateBuilderWithVersionHistories(
 		e.shard,
@@ -3385,6 +3424,7 @@ func (e *mutableStateBuilder) AddContinueAsNewEvent(
 		e,
 		attributes,
 		firstRunID,
+		firstScheduleTime,
 	); err != nil {
 		return nil, nil, &types.InternalServiceError{Message: "Failed to add workflow execution started event."}
 	}

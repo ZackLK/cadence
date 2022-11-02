@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // AccessDeniedError is an internal type (TBD...)
@@ -6891,6 +6892,7 @@ type WorkflowExecutionInfo struct {
 	AutoResetPoints   *ResetPoints                  `json:"autoResetPoints,omitempty"`
 	TaskList          string                        `json:"taskList,omitempty"`
 	IsCron            bool                          `json:"isCron,omitempty"`
+	UpdateTime        *int64                        `json:"updateTime,omitempty"`
 }
 
 // GetExecution is an internal getter (TBD...)
@@ -6937,6 +6939,14 @@ func (v *WorkflowExecutionInfo) GetCloseStatus() (o WorkflowExecutionCloseStatus
 func (v *WorkflowExecutionInfo) GetExecutionTime() (o int64) {
 	if v != nil && v.ExecutionTime != nil {
 		return *v.ExecutionTime
+	}
+	return
+}
+
+// GetUpdateTime is an internal getter (TBD...)
+func (v *WorkflowExecutionInfo) GetUpdateTime() (o int64) {
+	if v != nil && v.UpdateTime != nil {
+		return *v.UpdateTime
 	}
 	return
 }
@@ -6999,6 +7009,7 @@ type WorkflowExecutionStartedEventAttributes struct {
 	OriginalExecutionRunID              string                  `json:"originalExecutionRunId,omitempty"`
 	Identity                            string                  `json:"identity,omitempty"`
 	FirstExecutionRunID                 string                  `json:"firstExecutionRunId,omitempty"`
+	FirstScheduleTime                   *time.Time              `json:"firstScheduleTimeNano,omitempty"`
 	RetryPolicy                         *RetryPolicy            `json:"retryPolicy,omitempty"`
 	Attempt                             int32                   `json:"attempt,omitempty"`
 	ExpirationTimestamp                 *int64                  `json:"expirationTimestamp,omitempty"`
@@ -7063,6 +7074,14 @@ func (v *WorkflowExecutionStartedEventAttributes) GetInitiator() (o ContinueAsNe
 func (v *WorkflowExecutionStartedEventAttributes) GetFirstExecutionRunID() (o string) {
 	if v != nil {
 		return v.FirstExecutionRunID
+	}
+	return
+}
+
+// Get
+func (v *WorkflowExecutionStartedEventAttributes) GetFirstScheduledTime() (o time.Time) {
+	if v != nil && v.FirstScheduleTime != nil {
+		return *v.FirstScheduleTime
 	}
 	return
 }

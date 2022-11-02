@@ -25,6 +25,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -51,6 +52,7 @@ import (
 	"github.com/uber/cadence/common/reconciliation/invariant"
 	"github.com/uber/cadence/common/service"
 	"github.com/uber/cadence/common/types"
+	hcommon "github.com/uber/cadence/service/history/common"
 	"github.com/uber/cadence/service/history/config"
 	"github.com/uber/cadence/service/history/decision"
 	"github.com/uber/cadence/service/history/engine"
@@ -112,7 +114,9 @@ type (
 		crossClusterTaskProcessors common.Daemon
 		replicationTaskProcessors  []replication.TaskProcessor
 		replicationAckManager      replication.TaskAckManager
+		replicationTaskStore       *replication.TaskStore
 		replicationHydrator        replication.TaskHydrator
+		replicationMetricsEmitter  *replication.MetricsEmitterImpl
 		publicClient               workflowserviceclient.Interface
 		eventsReapplier            ndc.EventsReapplier
 		matchingClient             matching.Client
@@ -158,6 +162,16 @@ func NewEngineWithShardContext(
 	executionCache := execution.NewCache(shard)
 	failoverMarkerNotifier := failover.NewMarkerNotifier(shard, config, failoverCoordinator)
 	replicationHydrator := replication.NewDeferredTaskHydrator(shard.GetShardID(), historyV2Manager, executionCache, shard.GetDomainCache())
+	replicationTaskStore := replication.NewTaskStore(
+		shard.GetConfig(),
+		shard.GetClusterMetadata(),
+		shard.GetDomainCache(),
+		shard.GetMetricsClient(),
+		shard.GetLogger(),
+		replicationHydrator,
+	)
+	replicationReader := replication.NewDynamicTaskReader(shard.GetShardID(), executionManager, shard.GetTimeSource(), config)
+
 	historyEngImpl := &historyEngineImpl{
 		currentClusterName:   currentClusterName,
 		shard:                shard,
@@ -209,13 +223,14 @@ func NewEngineWithShardContext(
 		replicationAckManager: replication.NewTaskAckManager(
 			shard.GetShardID(),
 			shard,
-			shard.GetDomainCache(),
 			shard.GetMetricsClient(),
 			shard.GetLogger(),
-			shard.GetConfig(),
-			replication.NewDynamicTaskReader(shard.GetShardID(), executionManager, shard.GetTimeSource(), config),
-			replicationHydrator,
+			replicationReader,
+			replicationTaskStore,
 		),
+		replicationTaskStore: replicationTaskStore,
+		replicationMetricsEmitter: replication.NewMetricsEmitter(
+			shard.GetShardID(), shard, replicationReader, shard.GetMetricsClient()),
 	}
 	historyEngImpl.decisionHandler = decision.NewHandler(
 		shard,
@@ -351,6 +366,7 @@ func (e *historyEngineImpl) Start() {
 	e.timerProcessor.Start()
 	e.crossClusterProcessor.Start()
 	e.replicationDLQHandler.Start()
+	e.replicationMetricsEmitter.Start()
 
 	// failover callback will try to create a failover queue processor to scan all inflight tasks
 	// if domain needs to be failovered. However, in the multicursor queue logic, the scan range
@@ -367,6 +383,7 @@ func (e *historyEngineImpl) Start() {
 	if e.config.EnableGracefulFailover() {
 		e.failoverMarkerNotifier.Start()
 	}
+
 }
 
 // Stop the service.
@@ -378,6 +395,7 @@ func (e *historyEngineImpl) Stop() {
 	e.timerProcessor.Stop()
 	e.crossClusterProcessor.Stop()
 	e.replicationDLQHandler.Stop()
+	e.replicationMetricsEmitter.Stop()
 
 	e.crossClusterTaskProcessors.Stop()
 
@@ -468,8 +486,8 @@ func (e *historyEngineImpl) registerDomainFailoverCallback() {
 				// its length > 0 and has correct timestamp, to trigger a db scan
 				fakeDecisionTask := []persistence.Task{&persistence.DecisionTask{}}
 				fakeDecisionTimeoutTask := []persistence.Task{&persistence.DecisionTimeoutTask{VisibilityTimestamp: now}}
-				e.txProcessor.NotifyNewTask(e.currentClusterName, nil, fakeDecisionTask)
-				e.timerProcessor.NotifyNewTask(e.currentClusterName, nil, fakeDecisionTimeoutTask)
+				e.txProcessor.NotifyNewTask(e.currentClusterName, &hcommon.NotifyTaskInfo{Tasks: fakeDecisionTask})
+				e.timerProcessor.NotifyNewTask(e.currentClusterName, &hcommon.NotifyTaskInfo{Tasks: fakeDecisionTimeoutTask})
 			}
 
 			// handle graceful failover on active to passive
@@ -699,7 +717,7 @@ func (e *historyEngineImpl) startWorkflowHelper(
 	if err != nil {
 		return nil, err
 	}
-	historySize, err := wfContext.PersistStartWorkflowBatchEvents(ctx, newWorkflowEventsSeq[0])
+	historyBlob, err := wfContext.PersistStartWorkflowBatchEvents(ctx, newWorkflowEventsSeq[0])
 	if err != nil {
 		return nil, err
 	}
@@ -726,7 +744,7 @@ func (e *historyEngineImpl) startWorkflowHelper(
 	err = wfContext.CreateWorkflowExecution(
 		ctx,
 		newWorkflow,
-		historySize,
+		historyBlob,
 		createMode,
 		prevRunID,
 		prevLastWriteVersion,
@@ -792,7 +810,7 @@ func (e *historyEngineImpl) startWorkflowHelper(
 		err = wfContext.CreateWorkflowExecution(
 			ctx,
 			newWorkflow,
-			historySize,
+			historyBlob,
 			createMode,
 			prevRunID,
 			t.LastWriteVersion,
@@ -1579,6 +1597,7 @@ func (e *historyEngineImpl) DescribeWorkflowExecution(
 			AutoResetPoints:  executionInfo.AutoResetPoints,
 			Memo:             &types.Memo{Fields: executionInfo.Memo},
 			IsCron:           len(executionInfo.CronSchedule) > 0,
+			UpdateTime:       common.Int64Ptr(executionInfo.LastUpdatedTimestamp.UnixNano()),
 			SearchAttributes: &types.SearchAttributes{IndexedFields: executionInfo.SearchAttributes},
 		},
 	}
@@ -2347,8 +2366,10 @@ func (e *historyEngineImpl) SignalWorkflowExecution(
 			}
 
 			// If history is corrupted, signal will be rejected
-			if err := e.checkForHistoryCorruptions(ctx, mutableState); err != nil {
-				return nil, &types.EntityNotExistsError{Message: err.Error()}
+			if corrupted, err := e.checkForHistoryCorruptions(ctx, mutableState); err != nil {
+				return nil, err
+			} else if corrupted {
+				return nil, &types.EntityNotExistsError{Message: "Workflow execution corrupted."}
 			}
 
 			executionInfo := mutableState.GetExecutionInfo()
@@ -2437,7 +2458,9 @@ func (e *historyEngineImpl) SignalWithStartWorkflowExecution(
 			}
 
 			// workflow exists but history is corrupted, will restart workflow then signal
-			if err := e.checkForHistoryCorruptions(ctx, mutableState); err != nil {
+			if corrupted, err := e.checkForHistoryCorruptions(ctx, mutableState); err != nil {
+				return nil, err
+			} else if corrupted {
 				prevMutableState = mutableState
 				break
 			}
@@ -2526,10 +2549,10 @@ func (e *historyEngineImpl) SignalWithStartWorkflowExecution(
 	)
 }
 
-func (e *historyEngineImpl) checkForHistoryCorruptions(ctx context.Context, mutableState execution.MutableState) error {
+func (e *historyEngineImpl) checkForHistoryCorruptions(ctx context.Context, mutableState execution.MutableState) (bool, error) {
 	domainName := mutableState.GetDomainEntry().GetInfo().Name
 	if !e.config.EnableHistoryCorruptionCheck(domainName) {
-		return nil
+		return false, nil
 	}
 
 	// Ensure that we can obtain start event. Failing to do so means corrupted history or resurrected mutable state record.
@@ -2546,10 +2569,13 @@ func (e *historyEngineImpl) checkForHistoryCorruptions(ctx context.Context, muta
 			tag.WorkflowType(info.WorkflowTypeName),
 			tag.Error(err))
 
-		return err
+		if errors.Is(err, execution.ErrMissingWorkflowStartEvent) {
+			return true, nil
+		}
+		return false, err
 	}
 
-	return nil
+	return false, nil
 }
 
 // RemoveSignalMutableState remove the signal request id in signal_requested for deduplicate
@@ -2714,9 +2740,9 @@ func (e *historyEngineImpl) SyncShardStatus(
 	// 3. notify the transfer (essentially a no op, just put it here so it looks symmetric)
 	// 4. notify the cross cluster (essentially a no op, just put it here so it looks symmetric)
 	e.shard.SetCurrentTime(clusterName, now)
-	e.txProcessor.NotifyNewTask(clusterName, nil, []persistence.Task{})
-	e.timerProcessor.NotifyNewTask(clusterName, nil, []persistence.Task{})
-	e.crossClusterProcessor.NotifyNewTask(clusterName, nil, []persistence.Task{})
+	e.txProcessor.NotifyNewTask(clusterName, &hcommon.NotifyTaskInfo{Tasks: []persistence.Task{}})
+	e.timerProcessor.NotifyNewTask(clusterName, &hcommon.NotifyTaskInfo{Tasks: []persistence.Task{}})
+	e.crossClusterProcessor.NotifyNewTask(clusterName, &hcommon.NotifyTaskInfo{Tasks: []persistence.Task{}})
 	return nil
 }
 
@@ -2877,35 +2903,32 @@ func (e *historyEngineImpl) NotifyNewHistoryEvent(
 }
 
 func (e *historyEngineImpl) NotifyNewTransferTasks(
-	executionInfo *persistence.WorkflowExecutionInfo,
-	tasks []persistence.Task,
+	info *hcommon.NotifyTaskInfo,
 ) {
 
-	if len(tasks) > 0 {
-		task := tasks[0]
+	if len(info.Tasks) > 0 {
+		task := info.Tasks[0]
 		clusterName := e.clusterMetadata.ClusterNameForFailoverVersion(task.GetVersion())
-		e.txProcessor.NotifyNewTask(clusterName, executionInfo, tasks)
+		e.txProcessor.NotifyNewTask(clusterName, info)
 	}
 }
 
 func (e *historyEngineImpl) NotifyNewTimerTasks(
-	executionInfo *persistence.WorkflowExecutionInfo,
-	tasks []persistence.Task,
+	info *hcommon.NotifyTaskInfo,
 ) {
 
-	if len(tasks) > 0 {
-		task := tasks[0]
+	if len(info.Tasks) > 0 {
+		task := info.Tasks[0]
 		clusterName := e.clusterMetadata.ClusterNameForFailoverVersion(task.GetVersion())
-		e.timerProcessor.NotifyNewTask(clusterName, executionInfo, tasks)
+		e.timerProcessor.NotifyNewTask(clusterName, info)
 	}
 }
 
 func (e *historyEngineImpl) NotifyNewCrossClusterTasks(
-	executionInfo *persistence.WorkflowExecutionInfo,
-	tasks []persistence.Task,
+	info *hcommon.NotifyTaskInfo,
 ) {
 	taskByTargetCluster := make(map[string][]persistence.Task)
-	for _, task := range tasks {
+	for _, task := range info.Tasks {
 		// TODO: consider defining a new interface in persistence package
 		// for cross cluster tasks and add a method for returning the target cluster
 		var targetCluster string
@@ -2927,8 +2950,61 @@ func (e *historyEngineImpl) NotifyNewCrossClusterTasks(
 	}
 
 	for targetCluster, tasks := range taskByTargetCluster {
-		e.crossClusterProcessor.NotifyNewTask(targetCluster, executionInfo, tasks)
+		e.crossClusterProcessor.NotifyNewTask(targetCluster, &hcommon.NotifyTaskInfo{ExecutionInfo: info.ExecutionInfo, Tasks: tasks, PersistenceError: info.PersistenceError})
 	}
+}
+
+func (e *historyEngineImpl) NotifyNewReplicationTasks(info *hcommon.NotifyTaskInfo) {
+	for _, task := range info.Tasks {
+		hTask, err := hydrateReplicationTask(task, info.ExecutionInfo, info.VersionHistories, info.Activities, info.History)
+		if err != nil {
+			e.logger.Error("failed to preemptively hydrate replication task", tag.Error(err))
+			continue
+		}
+		e.replicationTaskStore.Put(hTask)
+	}
+}
+
+func hydrateReplicationTask(
+	task persistence.Task,
+	exec *persistence.WorkflowExecutionInfo,
+	versionHistories *persistence.VersionHistories,
+	activities map[int64]*persistence.ActivityInfo,
+	history events.PersistedBlobs,
+) (*types.ReplicationTask, error) {
+	info := persistence.ReplicationTaskInfo{
+		DomainID:     exec.DomainID,
+		WorkflowID:   exec.WorkflowID,
+		RunID:        exec.RunID,
+		TaskType:     task.GetType(),
+		CreationTime: task.GetVisibilityTimestamp().UnixNano(),
+		TaskID:       task.GetTaskID(),
+		Version:      task.GetVersion(),
+	}
+
+	switch t := task.(type) {
+	case *persistence.HistoryReplicationTask:
+		info.BranchToken = t.BranchToken
+		info.NewRunBranchToken = t.NewRunBranchToken
+		info.FirstEventID = t.FirstEventID
+		info.NextEventID = t.NextEventID
+	case *persistence.SyncActivityTask:
+		info.ScheduledID = t.ScheduledID
+	case *persistence.FailoverMarkerTask:
+		// No specific fields, but supported
+	default:
+		return nil, errors.New("unknown replication task")
+	}
+
+	hydrator := replication.NewImmediateTaskHydrator(
+		exec.IsRunning(),
+		versionHistories,
+		activities,
+		history.Find(info.BranchToken, info.FirstEventID),
+		history.Find(info.NewRunBranchToken, common.FirstEventID),
+	)
+
+	return hydrator.Hydrate(context.Background(), info)
 }
 
 func (e *historyEngineImpl) ResetTransferQueue(

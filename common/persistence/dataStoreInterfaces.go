@@ -644,6 +644,7 @@ type (
 		TaskList         string
 		IsCron           bool
 		NumClusters      int16
+		UpdateTime       time.Time
 		SearchAttributes map[string]interface{}
 	}
 
@@ -699,6 +700,7 @@ type (
 		TaskList           string
 		IsCron             bool
 		NumClusters        int16
+		UpdateTimestamp    time.Time
 		SearchAttributes   map[string][]byte
 	}
 
@@ -720,6 +722,7 @@ type (
 		RetentionPeriod    time.Duration
 		IsCron             bool
 		NumClusters        int16
+		UpdateTimestamp    time.Time
 	}
 
 	// InternalRecordWorkflowExecutionUninitializedRequest is used to add a record of a newly uninitialized execution
@@ -744,6 +747,7 @@ type (
 		TaskList           string
 		IsCron             bool
 		NumClusters        int16
+		UpdateTimestamp    time.Time
 		SearchAttributes   map[string][]byte
 	}
 

@@ -110,7 +110,7 @@ type (
 		CreateWorkflowExecution(ctx context.Context, request *persistence.CreateWorkflowExecutionRequest) (*persistence.CreateWorkflowExecutionResponse, error)
 		UpdateWorkflowExecution(ctx context.Context, request *persistence.UpdateWorkflowExecutionRequest) (*persistence.UpdateWorkflowExecutionResponse, error)
 		ConflictResolveWorkflowExecution(ctx context.Context, request *persistence.ConflictResolveWorkflowExecutionRequest) (*persistence.ConflictResolveWorkflowExecutionResponse, error)
-		AppendHistoryV2Events(ctx context.Context, request *persistence.AppendHistoryNodesRequest, domainID string, execution types.WorkflowExecution) (int, error)
+		AppendHistoryV2Events(ctx context.Context, request *persistence.AppendHistoryNodesRequest, domainID string, execution types.WorkflowExecution) (*persistence.AppendHistoryNodesResponse, error)
 
 		ReplicateFailoverMarkers(ctx context.Context, markers []*persistence.FailoverMarkerTask) error
 		AddingPendingFailoverMarker(*types.FailoverMarkerAttributes) error
@@ -917,21 +917,21 @@ func (s *contextImpl) AppendHistoryV2Events(
 	request *persistence.AppendHistoryNodesRequest,
 	domainID string,
 	execution types.WorkflowExecution,
-) (int, error) {
+) (*persistence.AppendHistoryNodesResponse, error) {
 	if s.isClosed() {
-		return 0, ErrShardClosed
+		return nil, ErrShardClosed
 	}
 
 	domainName, err := s.GetDomainCache().GetDomainName(domainID)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 
 	// NOTE: do not use generateNextTransferTaskIDLocked since
 	// generateNextTransferTaskIDLocked is not guarded by lock
 	transactionID, err := s.GenerateTransferTaskID()
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 
 	request.Encoding = s.getDefaultEncoding(domainName)
@@ -952,9 +952,9 @@ func (s *contextImpl) AppendHistoryV2Events(
 	}()
 	resp, err0 := s.GetHistoryManager().AppendHistoryNodes(ctx, request)
 	if resp != nil {
-		size = resp.Size
+		size = len(resp.DataBlob.Data)
 	}
-	return size, err0
+	return resp, err0
 }
 
 func (s *contextImpl) GetConfig() *config.Config {
@@ -1240,16 +1240,19 @@ func (s *contextImpl) allocateTaskIDsLocked(
 	); err != nil {
 		return err
 	}
-	if err := s.allocateTransferIDsLocked(
-		replicationTasks,
-		transferMaxReadLevel,
-	); err != nil {
-		return err
-	}
-	return s.allocateTimerIDsLocked(
+	if err := s.allocateTimerIDsLocked(
 		domainEntry,
 		workflowID,
 		timerTasks,
+	); err != nil {
+		return err
+	}
+
+	// Ensure that task IDs for replication tasks are generated last.
+	// This allows optimizing replication by checking whether there no potential tasks to read.
+	return s.allocateTransferIDsLocked(
+		replicationTasks,
+		transferMaxReadLevel,
 	)
 }
 

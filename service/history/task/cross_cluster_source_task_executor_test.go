@@ -90,9 +90,10 @@ func (s *crossClusterSourceTaskExecutorSuite) SetupTest() {
 	))
 	s.mockEngine = engine.NewMockEngine(s.controller)
 	s.mockEngine.EXPECT().NotifyNewHistoryEvent(gomock.Any()).AnyTimes()
-	s.mockEngine.EXPECT().NotifyNewTransferTasks(gomock.Any(), gomock.Any()).AnyTimes()
-	s.mockEngine.EXPECT().NotifyNewTimerTasks(gomock.Any(), gomock.Any()).AnyTimes()
-	s.mockEngine.EXPECT().NotifyNewCrossClusterTasks(gomock.Any(), gomock.Any()).AnyTimes()
+	s.mockEngine.EXPECT().NotifyNewTransferTasks(gomock.Any()).AnyTimes()
+	s.mockEngine.EXPECT().NotifyNewTimerTasks(gomock.Any()).AnyTimes()
+	s.mockEngine.EXPECT().NotifyNewCrossClusterTasks(gomock.Any()).AnyTimes()
+	s.mockEngine.EXPECT().NotifyNewReplicationTasks(gomock.Any()).AnyTimes()
 	s.mockShard.SetEngine(s.mockEngine)
 
 	s.mockDomainCache = s.mockShard.Resource.DomainCache
@@ -640,7 +641,7 @@ func (s *crossClusterSourceTaskExecutorSuite) TestExecuteCancelExecution_Success
 				func(req *p.AppendHistoryNodesRequest) bool {
 					return req.Events[0].GetEventType() == types.EventTypeExternalWorkflowExecutionCancelRequested
 				},
-			)).Return(&p.AppendHistoryNodesResponse{Size: 0}, nil).Once()
+			)).Return(&p.AppendHistoryNodesResponse{}, nil).Once()
 			s.mockExecutionMgr.On("UpdateWorkflowExecution", mock.Anything, mock.MatchedBy(
 				func(req *p.UpdateWorkflowExecutionRequest) bool {
 					return len(req.UpdateWorkflowMutation.CrossClusterTasks) == 0 &&
@@ -677,7 +678,7 @@ func (s *crossClusterSourceTaskExecutorSuite) TestExecuteCancelExecution_Failure
 				func(req *p.AppendHistoryNodesRequest) bool {
 					return req.Events[0].GetEventType() == types.EventTypeRequestCancelExternalWorkflowExecutionFailed
 				},
-			)).Return(&p.AppendHistoryNodesResponse{Size: 0}, nil).Once()
+			)).Return(&p.AppendHistoryNodesResponse{}, nil).Once()
 			s.mockExecutionMgr.On("UpdateWorkflowExecution", mock.Anything, mock.MatchedBy(
 				func(req *p.UpdateWorkflowExecutionRequest) bool {
 					return len(req.UpdateWorkflowMutation.CrossClusterTasks) == 0 &&
@@ -805,7 +806,7 @@ func (s *crossClusterSourceTaskExecutorSuite) TestExecuteSignalExecution_InitSta
 				func(req *p.AppendHistoryNodesRequest) bool {
 					return req.Events[0].GetEventType() == types.EventTypeExternalWorkflowExecutionSignaled
 				},
-			)).Return(&p.AppendHistoryNodesResponse{Size: 0}, nil).Once()
+			)).Return(&p.AppendHistoryNodesResponse{}, nil).Once()
 			s.mockExecutionMgr.On("UpdateWorkflowExecution", mock.Anything, mock.MatchedBy(
 				func(req *p.UpdateWorkflowExecutionRequest) bool {
 					return len(req.UpdateWorkflowMutation.CrossClusterTasks) == 0 &&
@@ -843,7 +844,7 @@ func (s *crossClusterSourceTaskExecutorSuite) TestExecuteSignalExecution_InitSta
 				func(req *p.AppendHistoryNodesRequest) bool {
 					return req.Events[0].GetEventType() == types.EventTypeSignalExternalWorkflowExecutionFailed
 				},
-			)).Return(&p.AppendHistoryNodesResponse{Size: 0}, nil).Once()
+			)).Return(&p.AppendHistoryNodesResponse{}, nil).Once()
 			s.mockExecutionMgr.On("UpdateWorkflowExecution", mock.Anything, mock.MatchedBy(
 				func(req *p.UpdateWorkflowExecutionRequest) bool {
 					return len(req.UpdateWorkflowMutation.CrossClusterTasks) == 0 &&
@@ -1004,7 +1005,7 @@ func (s *crossClusterSourceTaskExecutorSuite) TestExecuteStartChildExecution_Ini
 				func(req *p.AppendHistoryNodesRequest) bool {
 					return req.Events[0].GetEventType() == types.EventTypeChildWorkflowExecutionStarted
 				},
-			)).Return(&p.AppendHistoryNodesResponse{Size: 0}, nil).Once()
+			)).Return(&p.AppendHistoryNodesResponse{}, nil).Once()
 			s.mockExecutionMgr.On("UpdateWorkflowExecution", mock.Anything, mock.MatchedBy(
 				func(req *p.UpdateWorkflowExecutionRequest) bool {
 					return len(req.UpdateWorkflowMutation.CrossClusterTasks) == 0 &&
@@ -1042,7 +1043,7 @@ func (s *crossClusterSourceTaskExecutorSuite) TestExecuteStartChildExecution_Ini
 				func(req *p.AppendHistoryNodesRequest) bool {
 					return req.Events[0].GetEventType() == types.EventTypeStartChildWorkflowExecutionFailed
 				},
-			)).Return(&p.AppendHistoryNodesResponse{Size: 0}, nil).Once()
+			)).Return(&p.AppendHistoryNodesResponse{}, nil).Once()
 			s.mockExecutionMgr.On("UpdateWorkflowExecution", mock.Anything, mock.MatchedBy(
 				func(req *p.UpdateWorkflowExecutionRequest) bool {
 					return len(req.UpdateWorkflowMutation.CrossClusterTasks) == 0 &&

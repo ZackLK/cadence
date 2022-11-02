@@ -21,9 +21,8 @@
 package thrift
 
 import (
-	"github.com/uber/cadence/common/types"
-
 	"github.com/uber/cadence/.gen/go/shared"
+	"github.com/uber/cadence/common/types"
 )
 
 // FromAccessDeniedError converts internal AccessDeniedError type to thrift
@@ -6266,6 +6265,7 @@ func FromWorkflowExecutionInfo(t *types.WorkflowExecutionInfo) *shared.WorkflowE
 		AutoResetPoints:  FromResetPoints(t.AutoResetPoints),
 		TaskList:         &t.TaskList,
 		IsCron:           &t.IsCron,
+		UpdateTime:       t.UpdateTime,
 	}
 }
 
@@ -6289,6 +6289,7 @@ func ToWorkflowExecutionInfo(t *shared.WorkflowExecutionInfo) *types.WorkflowExe
 		AutoResetPoints:  ToResetPoints(t.AutoResetPoints),
 		TaskList:         t.GetTaskList(),
 		IsCron:           t.GetIsCron(),
+		UpdateTime:       t.UpdateTime,
 	}
 }
 
@@ -6321,6 +6322,7 @@ func FromWorkflowExecutionStartedEventAttributes(t *types.WorkflowExecutionStart
 	if t == nil {
 		return nil
 	}
+
 	return &shared.WorkflowExecutionStartedEventAttributes{
 		WorkflowType:                        FromWorkflowType(t.WorkflowType),
 		ParentWorkflowDomain:                t.ParentWorkflowDomain,
@@ -6338,6 +6340,7 @@ func FromWorkflowExecutionStartedEventAttributes(t *types.WorkflowExecutionStart
 		OriginalExecutionRunId:              &t.OriginalExecutionRunID,
 		Identity:                            &t.Identity,
 		FirstExecutionRunId:                 &t.FirstExecutionRunID,
+		FirstScheduledTimeNano:              timeToNano(t.FirstScheduleTime),
 		RetryPolicy:                         FromRetryPolicy(t.RetryPolicy),
 		Attempt:                             &t.Attempt,
 		ExpirationTimestamp:                 t.ExpirationTimestamp,
@@ -6355,6 +6358,7 @@ func ToWorkflowExecutionStartedEventAttributes(t *shared.WorkflowExecutionStarte
 	if t == nil {
 		return nil
 	}
+
 	return &types.WorkflowExecutionStartedEventAttributes{
 		WorkflowType:                        ToWorkflowType(t.WorkflowType),
 		ParentWorkflowDomain:                t.ParentWorkflowDomain,
@@ -6372,6 +6376,7 @@ func ToWorkflowExecutionStartedEventAttributes(t *shared.WorkflowExecutionStarte
 		OriginalExecutionRunID:              t.GetOriginalExecutionRunId(),
 		Identity:                            t.GetIdentity(),
 		FirstExecutionRunID:                 t.GetFirstExecutionRunId(),
+		FirstScheduleTime:                   nanoToTime(t.FirstScheduledTimeNano),
 		RetryPolicy:                         ToRetryPolicy(t.RetryPolicy),
 		Attempt:                             t.GetAttempt(),
 		ExpirationTimestamp:                 t.ExpirationTimestamp,

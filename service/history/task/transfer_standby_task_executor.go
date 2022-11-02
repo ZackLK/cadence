@@ -248,6 +248,7 @@ func (t *transferStandbyTaskExecutor) processCloseExecution(
 		visibilityMemo := getWorkflowMemo(executionInfo.Memo)
 		searchAttr := executionInfo.SearchAttributes
 		isCron := len(executionInfo.CronSchedule) > 0
+		updateTimestamp := getWorkflowLastUpdatedTimestamp(mutableState)
 
 		lastWriteVersion, err := mutableState.GetLastWriteVersion()
 		if err != nil {
@@ -282,6 +283,7 @@ func (t *transferStandbyTaskExecutor) processCloseExecution(
 			executionInfo.TaskList,
 			isCron,
 			numClusters,
+			updateTimestamp.UnixNano(),
 			searchAttr,
 		)
 	}
@@ -476,6 +478,7 @@ func (t *transferStandbyTaskExecutor) processRecordWorkflowStartedOrUpsertHelper
 	visibilityMemo := getWorkflowMemo(executionInfo.Memo)
 	searchAttr := copySearchAttributes(executionInfo.SearchAttributes)
 	isCron := len(executionInfo.CronSchedule) > 0
+	updateTimestamp := getWorkflowLastUpdatedTimestamp(mutableState)
 
 	domainEntry, err := t.shard.GetDomainCache().GetDomainByID(transferTask.DomainID)
 	if err != nil {
@@ -498,6 +501,7 @@ func (t *transferStandbyTaskExecutor) processRecordWorkflowStartedOrUpsertHelper
 			isCron,
 			numClusters,
 			visibilityMemo,
+			updateTimestamp.UnixNano(),
 			searchAttr,
 		)
 	}
@@ -515,6 +519,7 @@ func (t *transferStandbyTaskExecutor) processRecordWorkflowStartedOrUpsertHelper
 		visibilityMemo,
 		isCron,
 		numClusters,
+		updateTimestamp.UnixNano(),
 		searchAttr,
 	)
 
